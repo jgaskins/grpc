@@ -1,0 +1,14 @@
+name: grpc
+version: 0.1.0
+
+authors:
+  - Jamie Gaskins <jgaskins@gmail.com>
+
+crystal: 0.31.0
+
+dependencies:
+  protobuf:
+    # github: jeromegn/protobuf.cr
+    path: ../protobuf.cr
+
+license: MIT
