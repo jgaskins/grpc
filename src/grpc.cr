@@ -3,12 +3,13 @@ require "mutex"
 require "protobuf"
 
 require "./http2"
+require "./service"
 
 module GRPC
   class Server
     include HTTP2::Handler
 
-    @services = Hash(String, Protobuf::Service).new
+    @services = Hash(String, Service).new
 
     def call(context : HTTP2::Server::Context)
       request, response = context.request, context.response
@@ -28,36 +29,9 @@ module GRPC
       end
     end
 
-    def <<(handler : Protobuf::Service)
+    def <<(handler : Service)
       @services[handler.class.service_name] = handler
       self
-    end
-  end
-  
-  class ThroughputLogger
-    include HTTP2::Handler
-
-    @reqs = Array(Time).new
-    @running = false
-
-    def call(context : HTTP2::Server::Context)
-      ensure_running
-      @reqs << Time.utc
-      call_next context
-    end
-
-    private def ensure_running
-      unless @running
-        @running = true
-        spawn do
-          loop do
-            latest = @reqs[-1]? || Time.utc
-            sleep 1
-            @reqs.select! { |t| t > latest }
-            puts "Throughput: #{@reqs.size}/sec"
-          end
-        end
-      end
     end
   end
 end

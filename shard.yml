@@ -6,9 +6,19 @@ authors:
 
 crystal: 0.31.0
 
+scripts:
+  postinstall: shards build
+
+executables:
+  - grpc_crystal
+
+targets:
+  grpc_crystal:
+    main: src/compiler.cr
+
 dependencies:
   protobuf:
-    # github: jeromegn/protobuf.cr
-    path: ../protobuf.cr
+    github: jeromegn/protobuf.cr
+    branch: master
 
 license: MIT

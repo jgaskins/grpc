@@ -42,7 +42,7 @@ module HTTP2
       Priority = 0x20
     end
 
-    def self.type(type : UInt8)
+    def self.type(type : UInt8) : Frame.class
       TYPES.fetch(type) do
         raise InvalidTypeError.new("No frame type with value 0x#{type.to_s(16)}")
       end
@@ -113,6 +113,8 @@ module HTTP2
     struct Settings < Frame
       TYPE = 0x4_u8
 
+      alias ParameterHash = Hash(Parameter, UInt32)
+
       enum Parameter : UInt16
         HeaderTableSize = 1
         EnablePush = 2
@@ -120,6 +122,20 @@ module HTTP2
         InitialWindowSize = 4
         MaxFrameSize = 5
         MaxHeaderListSize = 6
+      end
+
+      def self.with_parameters(flags : Frame::Flags, stream_id : UInt32, parameters : ParameterHash)
+        buffer = IO::Memory.new(Bytes.new(parameters.size * 6))
+        parameters.each do |key, value|
+          buffer.write_bytes key.to_u16, IO::ByteFormat::NetworkEndian
+          buffer.write_bytes value.to_u32, IO::ByteFormat::NetworkEndian
+        end
+
+        new(
+          flags: flags,
+          stream_id: stream_id,
+          payload: buffer.to_slice,
+        )
       end
 
       def self.ack(settings : self)
@@ -135,7 +151,7 @@ module HTTP2
 
       def params
         io = IO::Memory.new(@payload)
-        params = Hash(Parameter, UInt32).new(initial_capacity: @payload.size / 6)
+        params = ParameterHash.new(initial_capacity: @payload.size / 6)
 
         until io.pos == @payload.size
           param = Parameter.from_value?(io.read_bytes(UInt16, IO::ByteFormat::NetworkEndian))
@@ -201,10 +217,11 @@ module HTTP2
     @handler : HTTP2::Handler
 
     def initialize(handlers : Array)
-      @handler = handlers.reduce do |prev_handler, next_handler|
+      handlers.reduce do |prev_handler, next_handler|
         prev_handler.next_handler = next_handler
         next_handler
       end
+      @handler = handlers.first
     end
 
     class Context
@@ -218,6 +235,12 @@ module HTTP2
     class Response < IO
       getter headers = HTTP::Headers { ":status" => "200" }
       getter body = IO::Memory.new
+
+      def initialize
+      end
+
+      def initialize(@headers, @body)
+      end
 
       def read(bytes : Bytes)
         @body.read bytes
@@ -234,7 +257,7 @@ module HTTP2
       server_socket = TCPServer.new(host, port)
       loop do
         socket = server_socket.accept
-        Connection.new(socket).start do |connection, stream|
+        Connection.new(socket).start_server do |connection, stream, frame|
           handle connection, stream
         end
       end
@@ -263,6 +286,7 @@ module HTTP2
             flags: Frame::Flags::EndStream | Frame::Flags::EndHeaders,
             payload: connection.hpack_encode(HTTP::Headers { "grpc-status" => "0" }),
           )
+          connection.delete_stream stream.id
         end
       end
     end
@@ -285,11 +309,11 @@ module HTTP2
     end
   end
 
-  class Connection < IO
+  class Connection
     PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".to_slice
 
     DEFAULTS = {
-      initial_window_size: 65535,
+      initial_window_size: 65535_u32,
       # max_frame_size: 16384,
       # max_header_list_size: 2 ** 31 - 1,
       # header_table_size: 4096,
@@ -305,28 +329,31 @@ module HTTP2
     @read_mutex = Mutex.new
     @write_mutex = Mutex.new
 
-    def initialize(@socket, @initial_window_size : Int32 = DEFAULTS[:initial_window_size])
+    def initialize(
+      @socket,
+      @initial_window_size = Atomic(UInt32).new(DEFAULTS[:initial_window_size]),
+      @window_size = initial_window_size,
+    )
     end
 
-    def start(&block : Connection, Stream ->)
+    def start_server(&block : Connection, Stream, Frame ->)
       spawn do
         bytes = Bytes.new(PREFACE.bytesize)
         @socket.read(bytes)
 
         if bytes == PREFACE
-          # Frame::Settings.new(flags: Frame::Settings::Flags::None, stream_id: 0, payload: Bytes.new(0)).to_s @socket
-
           loop do
             frame = read_frame
-            stream = @streams.fetch(frame.stream_id) do |id|
-              @streams[id] = Stream.new(self, id)
-            end
+
+            update_window_for frame
+
+            stream = stream(frame.stream_id)
             stream.receive frame, hpack_decoder: @hpack_decoder
 
-            block.call self, stream
+            block.call self, stream, frame
 
             if stream.state.closed?
-              @streams.delete stream.id
+              delete_stream stream.id
             end
           end
         else
@@ -339,6 +366,45 @@ module HTTP2
         # The client has closed the connection, so we don't actually need to do
         # anything here and we can exit normally.
       end
+
+      self
+    end
+
+    def start_client(&block : Connection, Stream, Frame ->)
+      @socket.write PREFACE
+      stream.send Frame::Settings.with_parameters(
+        flags: Frame::Settings::Flags::None,
+        stream_id: 0,
+        parameters: Frame::Settings::ParameterHash {
+          Frame::Settings::Parameter::EnablePush => 0_u32,
+          Frame::Settings::Parameter::MaxFrameSize => 4.megabytes.to_u32,
+          Frame::Settings::Parameter::MaxHeaderListSize => 4.megabytes.to_u32,
+        },
+      )
+
+      spawn do
+        loop do
+          frame = read_frame
+          stream = stream(frame.stream_id)
+          stream.receive frame, hpack_decoder: @hpack_decoder
+
+          block.call self, stream, frame
+
+          if stream.state.closed?
+            delete_stream stream.id
+          end
+        end
+      rescue ex : IO::EOFError
+        # Server has closed the connection, so we just let this fiber die
+      end
+
+      self
+    end
+
+    def stream(id)
+      @streams.fetch(id) do |id|
+        @streams[id] = Stream.new(self, id)
+      end
     end
 
     def hpack_encode(headers : HTTP::Headers)
@@ -346,18 +412,16 @@ module HTTP2
     end
 
     def stream
-      @streams[0]
+      stream 0_u32
     end
 
     private def read_frame : Frame
-      read_sync do
-        Frame.from_io(@socket)
-      end
+      Frame.from_io(@socket)
     end
 
     def write_frame(frame : Frame)
-      write_sync do
-        frame.to_s @socket
+      @write_mutex.synchronize do
+        return frame.to_s @socket
       end
     end
 
@@ -365,20 +429,26 @@ module HTTP2
       @state.closed?
     end
 
-    def read(slice : Bytes)
-      @socket.read slice
+    def delete_stream(id)
+      @streams.delete id
     end
 
-    def write(slice : Bytes) : Nil
-      @socket.write slice
-    end
+    private def update_window_for(frame)
+      @window_size.sub frame.payload.size.to_u32
 
-    private def read_sync(&block)
-      @read_mutex.synchronize { return yield }
-    end
+      if @window_size.get < @initial_window_size.get // 2
+        bytes_to_add = @initial_window_size.get - @window_size.get
+        payload = IO::Memory.new(4)
+          .tap { |io| io.write_bytes bytes_to_add, IO::ByteFormat::NetworkEndian }
+          .to_slice
 
-    private def write_sync(&block)
-      @write_mutex.synchronize { return yield }
+        write_frame Frame::WindowUpdate.new(
+          flags: Frame::Flags::None,
+          stream_id: 0,
+          payload: payload,
+        )
+        @window_size = @initial_window_size
+      end
     end
 
     enum State
@@ -389,8 +459,8 @@ module HTTP2
 
   class Stream
     getter state = State::Idle
-    getter initial_window_size : Int32 = 1 << 10
-    getter window_size = 32_u32
+    getter initial_window_size : UInt32 = 65535.to_u32
+    getter window_size : UInt32 = 65535.to_u32
     getter? push_enabled = false
     getter headers = HTTP::Headers.new
     getter! data : IO::Memory?
@@ -409,11 +479,22 @@ module HTTP2
         raise StateError.new("Cannot send #{data.class} frame in state #{state}")
       end
 
-      if data.flags.end_stream?
-        @state = State::Closed
+      case data.flags
+      when .end_stream?
+        case state
+        when .open?
+          @state = State::HalfClosedLocal
+        when .half_closed_remote?, .half_closed_local?
+          @state = State::Closed
+          @connection.delete_stream id
+        end
       end
 
       @connection.write_frame data
+    end
+
+    def send(window_update : Frame::WindowUpdate)
+      @connection.write_frame window_update
     end
 
     def send(ping : Frame::Ping)
@@ -427,9 +508,19 @@ module HTTP2
     def send(headers : Frame::Headers)
       @connection.write_frame headers
 
+      case state
+      when .idle?
+        @state = State::Open
+      end
+
       case headers.flags
       when .end_stream?
-        @state = State::Closed
+        case state
+        when .open?
+          @state = State::HalfClosedLocal
+        when .half_closed_remote?, .half_closed_local?
+          @state = State::Closed
+        end
       end
     end
 
@@ -439,18 +530,25 @@ module HTTP2
 
     def receive(data : Frame::Data, **_kwargs)
       (io = @data ||= IO::Memory.new).write data.payload
+      io.rewind
 
       case state
-      when .idle?, .open?
+      when .idle?, .open?, .half_closed_local?
       else
         raise StateError.new("Cannot receive #{data.class} frame when in state #{state.inspect}")
       end
 
       case data.flags
       when .end_stream?
-        @state = State::HalfClosedRemote
-        io.rewind
+        case state
+        when .open?
+          @state = State::HalfClosedRemote
+        when .half_closed_local?, .half_closed_remote?
+          @state = State::Closed
+        end
       end
+
+      update_window_for data
     end
 
     def receive(headers : Frame::Headers, hpack_decoder : HPACK::Decoder)
@@ -463,8 +561,15 @@ module HTTP2
 
       case headers.flags
       when .end_stream?
-        @state = State::HalfClosedRemote
+        case state
+        when .open?
+          @state = State::HalfClosedRemote
+        when .half_closed_remote?, .half_closed_local?
+          @state = State::Closed
+        end
       end
+
+      update_window_for headers
     end
 
     def receive(priority : Frame::Priority, **_kwargs)
@@ -484,7 +589,7 @@ module HTTP2
     end
 
     def receive(window_update : Frame::WindowUpdate, **_kwargs)
-      @window_size = window_update.size
+      @window_size += window_update.size
     end
 
     def receive(continuation : Frame::Continuation, **_kwargs)
@@ -505,6 +610,24 @@ module HTTP2
       send Frame::Settings.ack(settings) unless settings.ack?
     end
 
+    def update_window_for(frame)
+      @window_size -= frame.payload.size
+
+      if @window_size < @initial_window_size // 2
+        bytes_to_add = @initial_window_size - @window_size
+        payload = IO::Memory.new(4)
+          .tap { |io| io.write_bytes bytes_to_add, IO::ByteFormat::NetworkEndian }
+          .to_slice
+
+        send Frame::WindowUpdate.new(
+          flags: Frame::Flags::None,
+          stream_id: id,
+          payload: payload,
+        )
+        @window_size = @initial_window_size
+      end
+    end
+
     enum State
       Idle
       ReservedLocal
@@ -514,5 +637,85 @@ module HTTP2
       HalfClosedRemote
       Closed
     end
+  end
+
+  class Client
+    @connection : Connection?
+    @current_stream_id = Atomic(UInt32).new(1_u32)
+
+    def initialize(@host : String, @port : Int32)
+    end
+
+    def send(headers : HTTP::Headers, body : Bytes, trailers : HTTP::Headers? = nil)
+      stream = connection.stream(next_stream_id!)
+
+      stream.send Frame::Headers.new(
+        stream_id: stream.id,
+        flags: trailers ? Frame::Flags::None : Frame::Flags::EndHeaders,
+        payload: connection.hpack_encode(headers),
+      )
+      stream.send Frame::Data.new(
+        stream_id: stream.id,
+        flags: trailers ? Frame::Flags::None : Frame::Flags::EndStream,
+        payload: body,
+      )
+      if trailers
+        stream.send Frame::Headers.new(
+          stream_id: stream.id,
+          flags: Frame::Flags::EndHeaders | Frame::Flags::EndStream,
+          payload: connection.hpack_encode(trailers),
+        )
+      end
+
+      until stream.state.closed?
+        sleep 100.microseconds
+      end
+
+      Server::Response.new(
+        headers: stream.headers,
+        body: stream.data,
+      )
+    end
+
+    @connection_lock = Mutex.new
+    def connection
+      @connection ||= @connection_lock.synchronize { connect }
+    end
+
+    private def connect
+      socket = TCPSocket.new(@host, @port)
+      Connection.new(socket).start_client do |connection, stream, frame|
+      end
+    end
+
+    private def next_stream_id!
+      @current_stream_id.add(2)
+    end
+  end
+end
+
+struct Int32
+  def megabytes
+    1024 * kilobytes
+  end
+
+  def megabyte
+    megabytes
+  end
+
+  def kilobytes
+    1024 * bytes
+  end
+
+  def kilobyte
+    kilobytes
+  end
+
+  def bytes
+    1
+  end
+
+  def byte
+    bytes
   end
 end
