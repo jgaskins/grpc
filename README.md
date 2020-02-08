@@ -41,9 +41,15 @@ This project is a pure-Crystal implementation of gRPC.
 2. Compile the `.proto` files. If your messages are defined in `protos/hello_world.proto` and you want your code written out to the app's `src/protobufs` directory, use the following command:
    
    ```
-   $ protoc -I protos --grpc_out=src/protobufs --plugin=protoc-gen-grpc=bin/grpc_crystal protos/hello_world.proto
-   $ protoc -I protos --crystal_out=src/protobufs --plugin=protoc-gen-crystal=bin/protoc-gen-crystal protos/hello_world.proto
+   $ protoc -I protos \
+       --grpc_out=src/protobufs \
+       --crystal_out=src/protobufs \
+       --plugin=protoc-gen-grpc=bin/grpc_crystal \
+       --plugin=protoc-gen-crystal=bin/protoc-gen-crystal \
+       protos/hello_world.proto
    ```
+
+   This compiles both the service and the messages.
 
 ## Server
 
