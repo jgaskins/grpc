@@ -1,4 +1,4 @@
-require "http2"
+require "./http2"
 
 module GRPC
   module Service
