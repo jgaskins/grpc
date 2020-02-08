@@ -14,34 +14,96 @@ This project is a pure-Crystal implementation of gRPC.
 
 2. Run `shards install`
 
+3. Make sure you have Google's `grpc` tools installed
+  - macOS: `brew install grpc`
+
 ## Usage
 
-1. Write a `protos/#{name}.proto` file that contains a `service` entry:
+1. Write a `protos/#{name}.proto` file that contains a `service` entry and any message types it depends on:
 
   ```protobuf
-  syntax "proto3";
+  syntax = "proto3";
 
-  service MyService {
-    rpc MyMethod (MyRequest) returns (MyResponse) {}
+  service HelloWorld {
+    rpc MethodName (TheRequest) returns (TheResponse) {}
+  }
+  
+  message TheRequest {
+    string text = 1;
+  }
+  
+  message TheResponse {
+    string data = 1;
   }
   ```
 
-2. Compile the `.proto` file
-  1. Write a Crystal program that simply has
+2. Compile the `.proto` files. If your messages are defined in `protos/hello_world.proto` and you want your code written out to the app's `src/protobufs` directory, use the following command:
+   
+   ```
+   $ protoc -I protos --grpc_out=src/protobufs --plugin=protoc-gen-grpc=bin/grpc_crystal protos/hello_world.proto
+   $ protoc -I protos --crystal_out=src/protobufs --plugin=protoc-gen-crystal=bin/protoc-gen-crystal protos/hello_world.proto
+   ```
+
+## Server
+
+To handle gRPC requests for the above service definition, we need 3 things:
+
+- One or more service handlers
+- A gRPC server
+- An HTTP/2 server to wrap the gRPC server (gRPC runs on top of HTTP/2)
+
+### Service Handlers
+
+```crystal
+require "./protobufs/hello_world_services.pb"
+require "./protobufs/hello_world.pb"
+
+# Services are implemented as structs
+class HelloWorldHandler < HelloWorld
+  # You can define your own initialize method to inject dependencies
+
+  def method_name(request : TheRequest) : TheResponse
+    TheResponse.new(data: "Hello #{request.text}")
+  end
+end
+```
+
+### gRPC Server
 
 ```crystal
 require "grpc"
+grpc = GRPC::Server.new
+grpc << HelloWorldHandler.new
 ```
 
-First we'll set up a `GRPC::Server` and pass:
+You can add as many service handlers as you like.
+
+### HTTP/2 Server
+
+The `HTTP2::Server` works similarly to `HTTP::Server`:
 
 ```crystal
+require "grpc/http2"
+server = HTTP2::ClearTextServer.new([grpc]) # TLS isn't supported yet
+server.listen "0.0.0.0", 50000
 ```
 
-The gRPC protocol runs on top of HTTP/2, so this library contains a partial implementation of HTTP/2. You'll need to set up an HTTP/2 server that will manage the connections:
+And now gRPC requests for your `HelloWorld` service will be handled by `HelloWorldHandler`.
+
+## Client
+
+To write a client to consume the `HelloWorld` service, you simply use a `Stub`:
 
 ```crystal
-http2 = HTTP2::Server.new
+# Load the service and message definitions
+require "./protobufs/hello_world_services.pb"
+require "./protobufs/hello_world.pb"
+
+HelloWorldService = HelloWorld::Stub.new("localhost", 50000)
+
+# from anywhere in your app
+pp HelloWorldService.method_name(TheRequest.new(text: "foo"))
+# => TheResponse(@data="Hello foo")
 ```
 
 ## Limitations
