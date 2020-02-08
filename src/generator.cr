@@ -72,7 +72,7 @@ module GRPC
         if service = @file.service
           service.each do |service|
             puts
-            puts "abstract struct #{service.name}"
+            puts "abstract class #{service.name}"
             indent do
               puts "include GRPC::Service"
               puts
