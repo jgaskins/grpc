@@ -4,7 +4,7 @@ require "logger"
 module GRPC
   class Generator
     class_getter logger
-    @@logger = Logger.new(STDERR, level: Logger::DEBUG)
+    @@logger = Logger.new(STDERR, level: Logger::INFO)
 
     class Error < Exception
     end
