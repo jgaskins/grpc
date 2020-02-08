@@ -15,27 +15,28 @@ This project is a pure-Crystal implementation of gRPC.
 2. Run `shards install`
 
 3. Make sure you have Google's `grpc` tools installed
-  - macOS: `brew install grpc`
+
+   - macOS: `brew install grpc`
 
 ## Usage
 
 1. Write a `protos/hello_world.proto` file that contains a `service` entry and any message types it depends on:
 
-  ```protobuf
-  syntax = "proto3";
+   ```protobuf
+   syntax = "proto3";
 
-  service HelloWorld {
-    rpc MethodName (TheRequest) returns (TheResponse) {}
-  }
-  
-  message TheRequest {
-    string text = 1;
-  }
-  
-  message TheResponse {
-    string data = 1;
-  }
-  ```
+   service HelloWorld {
+     rpc MethodName (TheRequest) returns (TheResponse) {}
+   }
+
+   message TheRequest {
+     string text = 1;
+   }
+
+   message TheResponse {
+     string data = 1;
+   }
+   ```
 
 2. Compile the `.proto` files. If your messages are defined in `protos/hello_world.proto` and you want your code written out to the app's `src/protobufs` directory, use the following command:
    
@@ -58,7 +59,6 @@ To handle gRPC requests for the above service definition, we need 3 things:
 require "./protobufs/hello_world_services.pb"
 require "./protobufs/hello_world.pb"
 
-# Services are implemented as structs
 class HelloWorldHandler < HelloWorld
   # You can define your own initialize method to inject dependencies
 
