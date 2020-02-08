@@ -17,20 +17,20 @@ module GRPC
         raise InvalidMethodName.new("Unknown RPC method {{@type.id}}/#{method_name}")
       end
 
-      macro rpc(name, receives, returns)
+      macro rpc(name, receives request_type, returns response_type)
         \{% method_name = name.stringify.underscore.id %}
-        abstract def \{{method_name}}(request : \{{receives}}) : \{{returns}}
+        abstract def \{{method_name}}(request : \{{request_type}}) : \{{response_type}}
 
         def handle(method_name : String, request_body : IO)
           if method_name == \{{name.stringify}}
-            \{{method_name}}(\{{receives}}.from_protobuf(request_body))
+            \{{method_name}}(\{{request_type}}.from_protobuf(request_body))
           else
             previous_def(method_name, request_body)
           end
         end
 
         class Stub < ::GRPC::Service::Stub({{@type.id}})
-          def \{{method_name}}(request : \{{receives}}) : \{{returns}}
+          def \{{method_name}}(request : \{{request_type}}) : \{{response_type}}
             io = IO::Memory.new
 
             request_payload = request.to_protobuf.to_slice
@@ -50,7 +50,7 @@ module GRPC
             compressed = response.read_byte != 0 # TODO: Handle compression?
             length = response.read_bytes Int32, IO::ByteFormat::NetworkEndian
 
-            \{{returns}}.from_protobuf(response)
+            \{{response_type}}.from_protobuf(response)
           end
         end
       end

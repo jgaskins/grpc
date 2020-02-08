@@ -82,7 +82,7 @@ module GRPC
                 method.each do |m|
                   input_type = m.input_type.not_nil!.lstrip('.')
                   output_type = m.output_type.not_nil!.lstrip('.')
-                  puts "rpc #{m.name}, #{input_type}, #{output_type}"
+                  puts "rpc #{m.name}, receives: #{input_type}, returns: #{output_type}"
                 end
               end
             end
