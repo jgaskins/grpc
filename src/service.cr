@@ -1,3 +1,5 @@
+require "http2"
+
 module GRPC
   module Service
     class Error < Exception
