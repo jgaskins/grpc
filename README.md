@@ -19,7 +19,7 @@ This project is a pure-Crystal implementation of gRPC.
 
 ## Usage
 
-1. Write a `protos/#{name}.proto` file that contains a `service` entry and any message types it depends on:
+1. Write a `protos/hello_world.proto` file that contains a `service` entry and any message types it depends on:
 
   ```protobuf
   syntax = "proto3";
