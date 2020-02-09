@@ -61,6 +61,8 @@ To handle gRPC requests for the above service definition, we need 3 things:
 
 ### Service Handlers
 
+Services are compiled into abstract classes with the `protoc` command above. To implement a handler for a given service, we subclass the generated abstract class, defining the methods with snake_cased names:
+
 ```crystal
 require "./protobufs/hello_world_services.pb"
 require "./protobufs/hello_world.pb"
@@ -73,6 +75,8 @@ class HelloWorldHandler < HelloWorld
   end
 end
 ```
+
+The methods defined in the service declaration are required to be implemented by this class. Your program will not compile without them.
 
 ### gRPC Server
 
