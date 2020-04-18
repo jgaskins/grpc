@@ -11,7 +11,7 @@ scripts:
 
 executables:
   - grpc_crystal
-  - protoc-gen-crystal
+  # - protoc-gen-crystal
 
 targets:
   grpc_crystal:
