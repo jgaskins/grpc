@@ -7,7 +7,7 @@ authors:
 crystal: 0.31.0
 
 scripts:
-  postinstall: bash; shards build
+  postinstall: /usr/local/bin/zsh && shards build
 
 executables:
   - grpc_crystal
