@@ -7,7 +7,7 @@ authors:
 crystal: 0.31.0
 
 scripts:
-  postinstall: pwd && ls -l && echo '...' && ls -l .. && shards build
+  postinstall: pwd && ls -l && echo '...' && ls -l .. && shards build -v
 
 executables:
   - grpc_crystal
