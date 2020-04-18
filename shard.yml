@@ -7,7 +7,7 @@ authors:
 crystal: 0.31.0
 
 scripts:
-  postinstall: shards build
+  postinstall: shards build -v
 
 executables:
   - grpc_crystal
