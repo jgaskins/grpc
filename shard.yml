@@ -19,6 +19,6 @@ targets:
 dependencies:
   protobuf:
     github: jeromegn/protobuf.cr
-    branch: master
+    branch: test-shards-install
 
 license: MIT
