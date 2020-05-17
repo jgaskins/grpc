@@ -68,11 +68,15 @@ module GRPC
         end
       end
 
+      if package_name = package
+        package_namespace = "#{package_name.split('.').map(&.camelcase).join("::")}::"
+      end
+
       namespace do
         if service = @file.service
           service.each do |service|
             puts
-            puts "abstract class #{service.name}"
+            puts "abstract class #{package_namespace}#{service.name}"
             indent do
               puts "include GRPC::Service"
               puts
@@ -80,8 +84,8 @@ module GRPC
               puts
               if method = service.method
                 method.each do |m|
-                  input_type = m.input_type.not_nil!.lstrip('.')
-                  output_type = m.output_type.not_nil!.lstrip('.')
+                  input_type = m.input_type.not_nil!.split('.').map(&.camelcase).join("::")
+                  output_type = m.output_type.not_nil!.split('.').map(&.camelcase).join("::")
                   puts "rpc #{m.name}, receives: #{input_type}, returns: #{output_type}"
                 end
               end
