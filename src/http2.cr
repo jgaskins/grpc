@@ -25,6 +25,7 @@ module HTTP2
 
     class Error < HTTP2::Error
     end
+
     class InvalidTypeError < Error
     end
 
@@ -36,10 +37,10 @@ module HTTP2
 
     @[Flags]
     enum Flags : UInt8
-      EndStream = 0x01
+      EndStream  = 0x01
       EndHeaders = 0x04
-      Padded = 0x08
-      Priority = 0x20
+      Padded     = 0x08
+      Priority   = 0x20
     end
 
     def self.type(type : UInt8) : Frame.class
@@ -116,12 +117,12 @@ module HTTP2
       alias ParameterHash = Hash(Parameter, UInt32)
 
       enum Parameter : UInt16
-        HeaderTableSize = 1
-        EnablePush = 2
+        HeaderTableSize      = 1
+        EnablePush           = 2
         MaxConcurrentStreams = 3
-        InitialWindowSize = 4
-        MaxFrameSize = 5
-        MaxHeaderListSize = 6
+        InitialWindowSize    = 4
+        MaxFrameSize         = 5
+        MaxHeaderListSize    = 6
       end
 
       def self.with_parameters(flags : Frame::Flags, stream_id : UInt32, parameters : ParameterHash)
@@ -233,7 +234,7 @@ module HTTP2
     end
 
     class Response < IO
-      getter headers = HTTP::Headers { ":status" => "200" }
+      getter headers = HTTP::Headers{":status" => "200"}
       getter body = IO::Memory.new
 
       def initialize
@@ -284,7 +285,7 @@ module HTTP2
           stream.send Frame::Headers.new(
             stream_id: stream.id,
             flags: Frame::Flags::EndStream | Frame::Flags::EndHeaders,
-            payload: connection.hpack_encode(HTTP::Headers { "grpc-status" => "0" }),
+            payload: connection.hpack_encode(HTTP::Headers{"grpc-status" => "0"}),
           )
           connection.delete_stream stream.id
         end
@@ -295,6 +296,7 @@ module HTTP2
   class Request
     getter headers : HTTP::Headers
     getter body : IO?
+
     # getter trailers : HTTP::Headers?
 
     def initialize(@headers, @body)
@@ -332,7 +334,7 @@ module HTTP2
     def initialize(
       @socket,
       @initial_window_size = Atomic(UInt32).new(DEFAULTS[:initial_window_size]),
-      @window_size = initial_window_size,
+      @window_size = initial_window_size
     )
     end
 
@@ -361,7 +363,6 @@ module HTTP2
           @state = State::Closed
           next
         end
-
       rescue ex : IO::EOFError
         # The client has closed the connection, so we don't actually need to do
         # anything here and we can exit normally.
@@ -375,9 +376,9 @@ module HTTP2
       stream.send Frame::Settings.with_parameters(
         flags: Frame::Settings::Flags::None,
         stream_id: 0,
-        parameters: Frame::Settings::ParameterHash {
-          Frame::Settings::Parameter::EnablePush => 0_u32,
-          Frame::Settings::Parameter::MaxFrameSize => 4.megabytes.to_u32,
+        parameters: Frame::Settings::ParameterHash{
+          Frame::Settings::Parameter::EnablePush        => 0_u32,
+          Frame::Settings::Parameter::MaxFrameSize      => 4.megabytes.to_u32,
           Frame::Settings::Parameter::MaxHeaderListSize => 4.megabytes.to_u32,
         },
       )
@@ -468,6 +469,7 @@ module HTTP2
 
     class InvalidOperation < Error
     end
+
     class StateError < Error
     end
 
@@ -479,14 +481,15 @@ module HTTP2
         raise StateError.new("Cannot send #{data.class} frame in state #{state}")
       end
 
-      case data.flags
-      when .end_stream?
+      if data.flags.end_stream?
         case state
         when .open?
           @state = State::HalfClosedLocal
         when .half_closed_remote?, .half_closed_local?
           @state = State::Closed
           @connection.delete_stream id
+        else
+          # Do we need to do anything here?
         end
       end
 
@@ -508,18 +511,17 @@ module HTTP2
     def send(headers : Frame::Headers)
       @connection.write_frame headers
 
-      case state
-      when .idle?
+      if state.idle?
         @state = State::Open
       end
 
-      case headers.flags
-      when .end_stream?
+      if headers.flags.end_stream?
         case state
         when .open?
           @state = State::HalfClosedLocal
         when .half_closed_remote?, .half_closed_local?
           @state = State::Closed
+        else
         end
       end
     end
@@ -538,13 +540,16 @@ module HTTP2
         raise StateError.new("Cannot receive #{data.class} frame when in state #{state.inspect}")
       end
 
-      case data.flags
-      when .end_stream?
+      if data.flags.end_stream?
         case state
         when .open?
           @state = State::HalfClosedRemote
         when .half_closed_local?, .half_closed_remote?
           @state = State::Closed
+        when .idle?
+        when .closed?
+        when .reserved_local?
+        when .reserved_remote?
         end
       end
 
@@ -554,18 +559,17 @@ module HTTP2
     def receive(headers : Frame::Headers, hpack_decoder : HPACK::Decoder)
       @headers.merge! headers.decode_with(hpack_decoder)
 
-      case state
-      when .idle?
+      if state.idle?
         @state = State::Open
       end
 
-      case headers.flags
-      when .end_stream?
+      if headers.flags.end_stream?
         case state
         when .open?
           @state = State::HalfClosedRemote
         when .half_closed_remote?, .half_closed_local?
           @state = State::Closed
+        when .idle?, .closed?, .reserved_local?, .reserved_remote?
         end
       end
 
@@ -678,6 +682,7 @@ module HTTP2
     end
 
     @connection_lock = Mutex.new
+
     def connection
       @connection ||= @connection_lock.synchronize { connect }
     end
