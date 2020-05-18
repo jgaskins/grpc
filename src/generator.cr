@@ -61,11 +61,13 @@ module GRPC
       puts "## Generated from #{@file.name} #{package_part}".strip
       puts "require \"grpc/service\""
 
+      puts
+
       if (dependency = @file.dependency)
-        puts
         dependency.each do |dp|
           puts "require \"./#{File.basename(dp.not_nil!, ".proto") + ".pb.cr"}\""
         end
+        puts
       end
 
       if package_name = package
@@ -75,12 +77,11 @@ module GRPC
       namespace do
         if service = @file.service
           service.each do |service|
-            puts
             puts "abstract class #{package_namespace}#{service.name}"
             indent do
               puts "include GRPC::Service"
               puts
-              puts "@@service_name = #{service.name.inspect}"
+              puts %{@@service_name = "#{package_name}.#{service.name}"}
               puts
               if method = service.method
                 method.each do |m|
@@ -106,8 +107,8 @@ module GRPC
       end
       yield
       @ns.each do |ns|
-        puts "end"
         @indentation -= 1
+        puts "end"
       end
     end
 
