@@ -20,6 +20,7 @@ module GRPC
 
         _, service_name, method_name = request.headers[":path"].split('/')
         service = @services[service_name]
+        context.response.headers["content-type"] = "application/grpc+proto"
         payload = service.handle(method_name, body).to_protobuf.to_slice
 
         response.write_byte 0
