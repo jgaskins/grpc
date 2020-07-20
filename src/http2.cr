@@ -287,6 +287,7 @@ module HTTP2
             flags: Frame::Flags::EndStream | Frame::Flags::EndHeaders,
             payload: connection.hpack_encode(HTTP::Headers{"grpc-status" => "0"}),
           )
+        ensure
           connection.delete_stream stream.id
         end
       end
