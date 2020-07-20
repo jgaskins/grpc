@@ -58,7 +58,7 @@ module HTTP2
       stream_id = io.read_bytes(UInt32, IO::ByteFormat::NetworkEndian) & 0b0111_1111_1111_1111_1111_1111_1111_1111
 
       payload = Bytes.new(length)
-      io.read payload
+      io.read_fully payload
 
       type(type).new(flags, stream_id, payload)
     end
@@ -244,7 +244,7 @@ module HTTP2
       end
 
       def read(bytes : Bytes)
-        @body.read bytes
+        @body.read_fully bytes
       end
 
       def write(bytes : Bytes) : Nil
@@ -341,7 +341,7 @@ module HTTP2
     def start_server(&block : Connection, Stream, Frame ->)
       spawn do
         bytes = Bytes.new(PREFACE.bytesize)
-        @socket.read(bytes)
+        @socket.read_fully(bytes)
 
         if bytes == PREFACE
           loop do
