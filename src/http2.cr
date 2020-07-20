@@ -287,6 +287,7 @@ module HTTP2
             flags: Frame::Flags::EndStream | Frame::Flags::EndHeaders,
             payload: connection.hpack_encode(HTTP::Headers{"grpc-status" => "0"}),
           )
+          connection.flush
         ensure
           connection.delete_stream stream.id
         end
@@ -429,6 +430,10 @@ module HTTP2
 
     def closed?
       @state.closed?
+    end
+
+    def flush
+      @socket.flush
     end
 
     def delete_stream(id)
