@@ -1,6 +1,6 @@
 require "./spec_helper"
 
-describe Grpc do
+describe GRPC do
   # TODO: Write tests
 
   it "works" do

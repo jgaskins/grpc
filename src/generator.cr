@@ -1,10 +1,9 @@
 require "protobuf"
-require "logger"
+require "log"
 
 module GRPC
   class Generator
-    class_getter logger
-    @@logger = Logger.new(STDERR, level: Logger::INFO)
+    Log.setup(:info, Log::IOBackend.new(io = STDERR))
 
     class Error < Exception
     end
@@ -19,7 +18,7 @@ module GRPC
         package_map = PackageMap.new
 
         proto_files.each do |file|
-          logger.debug "Processing #{file}..."
+          Log.debug { "Processing #{file}..." }
           if !file.package.nil?
             package_map[file.package.not_nil!] = file.crystal_ns.join("::")
           end
@@ -47,7 +46,7 @@ module GRPC
 
     def initialize(
       @file : Protobuf::CodeGeneratorRequest::FileDescriptorProto,
-      @package_map : PackageMap,
+      @package_map : PackageMap
     )
       @ns = ENV
         .fetch("PROTOBUF_NS", "")

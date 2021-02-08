@@ -4,7 +4,7 @@ version: 0.1.4
 authors:
   - Jamie Gaskins <jgaskins@gmail.com>
 
-crystal: 0.31.0
+crystal: 0.36.0
 
 scripts:
   postinstall: shards build
