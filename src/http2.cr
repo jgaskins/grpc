@@ -326,7 +326,11 @@ module HTTP2
     PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".to_slice
 
     DEFAULTS = {
-      initial_window_size: 1048576_u32,
+      # The initial value for the flow-control window is 65,535 octets for both
+      # new streams and the overall connection.
+      # https://www.rfc-editor.org/rfc/rfc7540#section-5.2.1
+      initial_window_size: 65536_u32,
+
       # max_frame_size: 16384,
       # max_header_list_size: 2 ** 31 - 1,
       # header_table_size: 4096,
