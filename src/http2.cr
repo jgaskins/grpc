@@ -258,13 +258,23 @@ module HTTP2
       server_socket = TCPServer.new(host, port)
       loop do
         socket = server_socket.accept
-        Connection.new(socket).start_server do |connection, stream, frame|
+        connection = Connection.new(socket)
+        connection.write_frame Frame::Settings.with_parameters(
+          stream_id: 0,
+          flags: :none,
+          parameters: Frame::Settings::ParameterHash{
+            Frame::Settings::Parameter::EnablePush        => 0_u32,
+            Frame::Settings::Parameter::MaxFrameSize      => 4.megabytes.to_u32,
+            Frame::Settings::Parameter::MaxHeaderListSize => 4.megabytes.to_u32,
+          },
+        )
+        connection.start_server do |connection, stream, frame|
           handle connection, stream
         end
       end
     end
 
-    def handle(connection, stream)
+    def handle(connection : Connection, stream : Stream)
       if stream.state.half_closed_remote?
         spawn do
           request = Request.new(stream.headers, stream.data)
@@ -316,7 +326,7 @@ module HTTP2
     PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".to_slice
 
     DEFAULTS = {
-      initial_window_size: 65535_u32,
+      initial_window_size: 1048576_u32,
       # max_frame_size: 16384,
       # max_header_list_size: 2 ** 31 - 1,
       # header_table_size: 4096,
@@ -460,7 +470,7 @@ module HTTP2
   end
 
   class Stream
-    getter state = State::Idle
+    getter state : State = State::Idle
     getter initial_window_size : UInt32 = 65535.to_u32
     getter window_size : UInt32 = 65535.to_u32
     getter? push_enabled = false
