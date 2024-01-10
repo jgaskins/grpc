@@ -449,7 +449,10 @@ module HTTP2
       @streams.delete id
     end
 
-    private def update_window_for(frame)
+    private def update_window_for(frame : Frame)
+    end
+
+    private def update_window_for(frame : Frame::Data)
       @window_size.sub frame.payload.size.to_u32
 
       if @window_size.get < @initial_window_size.get // 2
