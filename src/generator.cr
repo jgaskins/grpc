@@ -80,7 +80,12 @@ module GRPC
             indent do
               puts "include GRPC::Service"
               puts
-              puts %{@@service_name = "#{package_name}.#{service.name}"}
+              if package_name
+                fully_qualified_name = "#{package_name}.#{service.name}"
+              else
+                fully_qualified_name = service.name
+              end
+              puts %{@@service_name = "#{fully_qualified_name}"}
               puts
               if method = service.method
                 method.each do |m|
