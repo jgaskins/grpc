@@ -24,7 +24,7 @@ module GRPC
           payload = service.handle(method_name, body).to_protobuf.to_slice
           response.headers["grpc-status"] ||= "0"
         else
-          response.headers["grpc-status"] = "5"
+          response.headers["grpc-status"] = "5" # Not Found
           payload = Bytes.empty
         end
 
