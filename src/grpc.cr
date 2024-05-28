@@ -19,7 +19,7 @@ module GRPC
         length = body.read_bytes(UInt32, IO::ByteFormat::NetworkEndian)
 
         _, service_name, method_name = request.headers[":path"].split('/')
-        context.response.headers["content-type"] = "application/grpc+proto"
+        context.response.headers["content-type"] = "application/grpc"
         if service = @services[service_name]?
           payload = service.handle(method_name, body).to_protobuf.to_slice
           response.headers["grpc-status"] ||= "0"

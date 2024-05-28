@@ -268,6 +268,7 @@ module HTTP2
             Frame::Settings::Parameter::MaxHeaderListSize => 4.megabytes.to_u32,
           },
         )
+        connection.flush
         connection.start_server do |connection, stream, frame|
           handle connection, stream
         end
@@ -297,6 +298,8 @@ module HTTP2
             flags: Frame::Flags::EndStream | Frame::Flags::EndHeaders,
             payload: connection.hpack_encode(HTTP::Headers{"grpc-status" => "0"}),
           )
+          connection.flush
+        rescue ex : IO::EOFError
         ensure
           connection.delete_stream stream.id
         end
@@ -397,6 +400,7 @@ module HTTP2
           Frame::Settings::Parameter::MaxHeaderListSize => 4.megabytes.to_u32,
         },
       )
+      flush
 
       spawn do
         loop do
@@ -431,13 +435,19 @@ module HTTP2
       stream 0_u32
     end
 
+    def flush
+      @socket.flush
+    end
+
     private def read_frame : Frame
+      @socket.flush
       Frame.from_io(@socket)
     end
 
     def write_frame(frame : Frame)
       @write_mutex.synchronize do
-        return frame.to_s @socket
+        frame.to_s @socket
+        flush
       end
     end
 
@@ -605,6 +615,7 @@ module HTTP2
 
     def receive(ping : Frame::Ping, **_kwargs)
       send Frame::Ping.ack(ping) unless ping.ack?
+      @connection.flush
     end
 
     def receive(go_away : Frame::GoAway, **_kwargs)
@@ -630,6 +641,7 @@ module HTTP2
       end
 
       send Frame::Settings.ack(settings) unless settings.ack?
+      @connection.flush
     end
 
     def update_window_for(frame)
