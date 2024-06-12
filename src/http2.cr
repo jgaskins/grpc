@@ -283,11 +283,6 @@ module HTTP2
           context = Server::Context.new(request, response)
           @handler.call context
 
-          stream.send Frame::Headers.new(
-            stream_id: stream.id,
-            flags: Frame::Flags::EndHeaders,
-            payload: connection.hpack_encode(response.headers),
-          )
           stream.send Frame::Data.new(
             stream_id: stream.id,
             flags: Frame::Flags::None,
@@ -296,7 +291,7 @@ module HTTP2
           stream.send Frame::Headers.new(
             stream_id: stream.id,
             flags: Frame::Flags::EndStream | Frame::Flags::EndHeaders,
-            payload: connection.hpack_encode(HTTP::Headers{"grpc-status" => "0"}),
+            payload: connection.hpack_encode(response.headers),
           )
           connection.flush
         rescue ex : IO::EOFError

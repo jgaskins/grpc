@@ -71,6 +71,11 @@ class HelloWorldHandler < HelloWorld
   # You can define your own initialize method to inject dependencies
 
   def method_name(request : TheRequest) : TheResponse
+
+    if request.text.nil? || request.text.size == 0
+      raise GRPC::BadStatus.new(GRPC::StatusCode::INVALID_ARGUMENT, "Text cannot be blank.")
+    end
+
     TheResponse.new(data: "Hello #{request.text}")
   end
 end

@@ -1,7 +1,10 @@
 require "uuid"
+require "uri"
 require "mutex"
 require "protobuf"
 
+require "./status_codes"
+require "./errors"
 require "./http2"
 require "./service"
 
@@ -19,12 +22,20 @@ module GRPC
         length = body.read_bytes(UInt32, IO::ByteFormat::NetworkEndian)
 
         _, service_name, method_name = request.headers[":path"].split('/')
-        context.response.headers["content-type"] = "application/grpc"
+        response.headers["content-type"] = "application/grpc"
         if service = @services[service_name]?
-          payload = service.handle(method_name, body).to_protobuf.to_slice
+          begin
+            payload = service.handle(method_name, body).to_protobuf.to_slice
+          rescue ex : GRPC::BadStatus
+            response.headers["grpc-status"] = ex.code.value.to_s
+            response.headers["grpc-message"] = URI.encode(ex.message || "")
+
+            payload = Bytes.empty
+          end
+
           response.headers["grpc-status"] ||= "0"
         else
-          response.headers["grpc-status"] = "5" # Not Found
+          response.headers["grpc-status"] = StatusCode::NOT_FOUND.value.to_s
           payload = Bytes.empty
         end
 
