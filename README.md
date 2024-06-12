@@ -72,7 +72,7 @@ class HelloWorldHandler < HelloWorld
 
   def method_name(request : TheRequest) : TheResponse
     unless request.text.presence
-      raise GRPC::BadStatus.new(GRPC::StatusCode::INVALID_ARGUMENT, "Text cannot be blank.")
+      raise GRPC::BadStatus.new(:invalid_argument, "Text cannot be blank.")
     end
 
     TheResponse.new(data: "Hello #{request.text}")
