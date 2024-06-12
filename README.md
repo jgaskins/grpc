@@ -71,7 +71,6 @@ class HelloWorldHandler < HelloWorld
   # You can define your own initialize method to inject dependencies
 
   def method_name(request : TheRequest) : TheResponse
-
     unless request.text.presence
       raise GRPC::BadStatus.new(GRPC::StatusCode::INVALID_ARGUMENT, "Text cannot be blank.")
     end
