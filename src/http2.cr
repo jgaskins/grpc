@@ -376,6 +376,11 @@ module HTTP2
           @state = State::Closed
           next
         end
+      rescue ex : OverflowError
+        puts "[WARN] Incoming frame size exceeds local window size of (#{@initial_window_size.get}). Conection closed."
+        # window size received is too large, closing connection
+        @socket.close
+        @state = State::Closed
       rescue ex : IO::EOFError
         # The client has closed the connection, so we don't actually need to do
         # anything here and we can exit normally.
